@@ -29,8 +29,12 @@ PUBLISHER_FEEDS = {
 }
 
 
-def google_news_url(org: str, window: str = "1d") -> str:
-    q = quote_plus(f'"{org}" when:{window}')
+def google_news_url(
+    org: str, window: str = "1d", after: str | None = None, before: str | None = None
+) -> str:
+    """`after` and `before` are YYYY-MM-DD and replace the "last N days" window."""
+    span = f"after:{after} before:{before}" if after and before else f"when:{window}"
+    q = quote_plus(f'"{org}" {span}')
     return f"https://news.google.com/rss/search?q={q}&hl=en-NG&gl=NG&ceid=NG:en"
 
 
@@ -88,7 +92,12 @@ async def fetch_text(client: httpx.AsyncClient, url: str) -> str | None:
     return r.text if r.status_code == 200 else None
 
 
-async def collect(store: Store, orgs: list[str] | None = None) -> dict:
+async def collect(
+    store: Store,
+    orgs: list[str] | None = None,
+    after: str | None = None,
+    before: str | None = None,
+) -> dict:
     """One run: fetch every feed, keep new mentions, skip what we've seen."""
     orgs = orgs or config.WATCH_ORGS
     new: list[Post] = []
@@ -97,8 +106,12 @@ async def collect(store: Store, orgs: list[str] | None = None) -> dict:
     async with httpx.AsyncClient(
         timeout=15, headers={"User-Agent": config.USER_AGENT}
     ) as client:
-        jobs = [(f"Google News: {o}", google_news_url(o), o) for o in orgs]
-        jobs += [(name, url, None) for name, url in PUBLISHER_FEEDS.items()]
+        jobs = [
+            (f"Google News: {o}", google_news_url(o, after=after, before=before), o)
+            for o in orgs
+        ]
+        if not after:  # publisher feeds only hold the latest articles
+            jobs += [(name, url, None) for name, url in PUBLISHER_FEEDS.items()]
         for name, url, org in jobs:
             xml_text = await fetch_text(client, url)
             if xml_text is None:

@@ -6,6 +6,13 @@ from app.models import Narrative, VerifiedFact, Verification
 
 
 async def verify_narrative(n: Narrative, facts: list[VerifiedFact]) -> Verification:
+    if not facts:  # nothing to check against: say so, don't ask the model
+        return Verification(
+            narrative_id=n.id,
+            verdict="unverified",
+            reasoning="No verified facts are on file for this organization yet.",
+            evidence_fact_ids=[],
+        )
     listing = "\n".join(
         f"[{f.id}] {f.title}: {f.text} (source: {f.source})" for f in facts
     )

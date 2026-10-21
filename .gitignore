@@ -18,6 +18,8 @@ next-env.d.ts
 backend/data/*.db
 backend/data/*_cache.json
 backend/data/replay_analysis.json
+backend/data/live_analysis.json
+backend/data/backfilled.json
 .ruff_cache/
 .pytest_cache/
 .playwright-mcp/
@@ -26,3 +28,7 @@ backend/data/replay_analysis.json
 *.log
 .DS_Store
 .vercel
+
+# unused template files and a stale lockfile (pip is used)
+web/public/*.svg
+backend/uv.lock

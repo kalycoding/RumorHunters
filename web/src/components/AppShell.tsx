@@ -10,8 +10,8 @@ const icons = {
 
 const NAV = [
   { id: "watcher", label: "Watcher", href: "/watcher", d: icons.watcher },
-  { id: "checker", label: "Fact-checker (soon)", href: null, d: icons.checker },
-  { id: "replies", label: "Replies (soon)", href: null, d: icons.replies },
+  { id: "checker", label: "Fact-checker", href: "/checker", d: icons.checker },
+  { id: "replies", label: "Replies", href: "/replies", d: icons.replies },
 ] as const;
 
 export function AppShell({
@@ -28,35 +28,24 @@ export function AppShell({
           R
         </span>
         {NAV.map((item) => {
-          const icon = (
-            <svg
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              aria-hidden
-            >
-              <path d={item.d} strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          );
-          return item.href ? (
+          return (
             <Link
               key={item.id}
               href={item.href}
               title={item.label}
               className={`grid h-10 w-10 place-items-center rounded-xl transition ${active === item.id ? "bg-white text-brand shadow-sm" : "text-ink/55 hover:bg-white/60"}`}
             >
-              {icon}
+              <svg
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                aria-hidden
+              >
+                <path d={item.d} strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </Link>
-          ) : (
-            <span
-              key={item.id}
-              title={item.label}
-              className="grid h-10 w-10 place-items-center rounded-xl text-ink/25"
-            >
-              {icon}
-            </span>
           );
         })}
       </aside>

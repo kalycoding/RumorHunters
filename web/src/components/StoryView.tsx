@@ -5,18 +5,26 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { clock, dur, LANG, PLATFORM } from "@/lib/format";
 import type { DemoPost } from "@/lib/mock";
-import { loadReplay, mockReplay, type ReplayData } from "@/lib/replay";
+import {
+  loadLive,
+  loadReplay,
+  mockReplay,
+  type ReplayData,
+} from "@/lib/replay";
 
 const BUCKET = 30; // minutes per bar
 
 export function StoryView() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<ReplayData | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "offline">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "offline">(
+    "loading",
+  );
 
   useEffect(() => {
     let alive = true;
-    loadReplay().then((r) => {
+    const load = id.startsWith("live-") ? loadLive : loadReplay;
+    load().then((r) => {
       if (!alive) return;
       if (r === "missing" || r === "offline") {
         setData(mockReplay());
@@ -29,7 +37,7 @@ export function StoryView() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [id]);
 
   const story = data?.stories.find((s) => s.id === id) ?? null;
   const posts = useMemo(
@@ -44,7 +52,9 @@ export function StoryView() {
         <Link href="/watcher" className="text-sm text-brand hover:underline">
           ← Back to Watcher
         </Link>
-        <p className="mt-4 text-ink/60">That story isn&apos;t in the current data.</p>
+        <p className="mt-4 text-ink/60">
+          That story isn&apos;t in the current data.
+        </p>
       </div>
     );
   }
@@ -72,7 +82,8 @@ export function StoryView() {
   const counts = Array.from(
     { length: buckets },
     (_, i) =>
-      posts.filter((p) => p.minute >= i * BUCKET && p.minute < (i + 1) * BUCKET).length,
+      posts.filter((p) => p.minute >= i * BUCKET && p.minute < (i + 1) * BUCKET)
+        .length,
   );
   const running = counts.reduce<number[]>(
     (acc, c) => [...acc, (acc.at(-1) ?? 0) + c],
@@ -87,7 +98,9 @@ export function StoryView() {
   const platforms = by((p) => p.platform).map(
     ([k, v]) => [PLATFORM[k], v] as [string, number],
   );
-  const languages = by((p) => p.lang).map(([k, v]) => [LANG[k], v] as [string, number]);
+  const languages = by((p) => p.lang).map(
+    ([k, v]) => [LANG[k], v] as [string, number],
+  );
   const sources = new Map<string, { n: number; reach: number }>();
   posts.forEach((p) => {
     const e = sources.get(p.author) ?? { n: 0, reach: 0 };
@@ -100,7 +113,10 @@ export function StoryView() {
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
       <div>
-        <Link href="/watcher" className="text-sm text-ink/50 transition hover:text-ink">
+        <Link
+          href="/watcher"
+          className="text-sm text-ink/50 transition hover:text-ink"
+        >
           ← Back to Watcher
         </Link>
         <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
@@ -149,7 +165,8 @@ export function StoryView() {
           </h2>
           <div className="flex gap-4 text-xs text-ink/50">
             <span className="flex items-center gap-1.5">
-              <i className="h-2.5 w-2.5 rounded-sm bg-brand/80" /> Posts per 30 min
+              <i className="h-2.5 w-2.5 rounded-sm bg-brand/80" /> Posts per 30
+              min
             </span>
             <span className="flex items-center gap-1.5">
               <i className="h-0.5 w-4 bg-emerald-600" /> Running total
@@ -159,7 +176,9 @@ export function StoryView() {
         <SpreadChart
           counts={counts}
           running={running}
-          spikeBucket={story.spikeMinute === null ? null : story.spikeMinute / BUCKET}
+          spikeBucket={
+            story.spikeMinute === null ? null : story.spikeMinute / BUCKET
+          }
           label={(i) => clock(i * BUCKET, start)}
         />
       </section>
@@ -174,7 +193,10 @@ export function StoryView() {
         <Card title="Most influential sources">
           <ul className="space-y-2.5 text-sm">
             {topSources.map(([name, v]) => (
-              <li key={name} className="flex items-center justify-between gap-3">
+              <li
+                key={name}
+                className="flex items-center justify-between gap-3"
+              >
                 <span className="truncate text-ink/75">{name}</span>
                 <span className="shrink-0 text-xs text-ink/45">
                   {v.n} posts · reach {Math.round(v.reach)}
@@ -226,8 +248,8 @@ export function StoryView() {
             </p>
           )}
           <p className="mt-4 text-xs text-ink/40">
-            Score is plain arithmetic on reach, speed, growth, urgency and the verdict. No
-            model guesses it.
+            Score is plain arithmetic on reach, speed, growth, urgency and the
+            verdict. No model guesses it.
           </p>
         </Card>
       </div>
@@ -236,7 +258,9 @@ export function StoryView() {
         <p className="text-sm text-ink/75">{story.reasoning}</p>
         {story.evidence && (
           <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
-            <span className="font-medium">Verified fact ({story.evidence.source}):</span>{" "}
+            <span className="font-medium">
+              Verified fact ({story.evidence.source}):
+            </span>{" "}
             {story.evidence.text}
           </p>
         )}
@@ -244,7 +268,9 @@ export function StoryView() {
 
       {story.draft && (
         <Card title="Draft reply (needs a person's approval)">
-          <p className="text-sm leading-relaxed text-ink">{story.draft.statement}</p>
+          <p className="text-sm leading-relaxed text-ink">
+            {story.draft.statement}
+          </p>
           {story.draft.social && (
             <p className="mt-3 text-xs text-ink/60">
               <span className="font-medium text-ink/75">Social reply:</span>{" "}
@@ -253,7 +279,8 @@ export function StoryView() {
           )}
           {story.draft.sms && (
             <p className="mt-1.5 text-xs text-ink/60">
-              <span className="font-medium text-ink/75">SMS:</span> {story.draft.sms}
+              <span className="font-medium text-ink/75">SMS:</span>{" "}
+              {story.draft.sms}
             </p>
           )}
         </Card>
@@ -283,7 +310,9 @@ export function StoryView() {
                 >
                   {p.url.replace("https://", "")} ↗
                 </a>
-                <span className="text-amber-600">simulated source</span>
+                {!data.live && (
+                  <span className="text-amber-600">simulated source</span>
+                )}
               </li>
             ))}
         </ul>
@@ -292,19 +321,35 @@ export function StoryView() {
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Stat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
   return (
     <div className="rounded-3xl bg-white p-5 ring-1 ring-black/[0.05]">
       <p className="text-xs font-medium uppercase tracking-[0.14em] text-ink/45">
         {label}
       </p>
-      <p className="mt-1.5 text-2xl font-medium tracking-[-0.03em] text-ink">{value}</p>
+      <p className="mt-1.5 text-2xl font-medium tracking-[-0.03em] text-ink">
+        {value}
+      </p>
       {hint && <p className="mt-0.5 text-[11px] text-ink/40">{hint}</p>}
     </div>
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.05]">
       <h2 className="mb-4 text-xs font-medium uppercase tracking-[0.16em] text-ink/45">
@@ -338,14 +383,24 @@ function Bars({ rows, total }: { rows: [string, number][]; total: number }) {
   );
 }
 
-function Step({ time, text, hot }: { time?: string; text: string; hot?: boolean }) {
+function Step({
+  time,
+  text,
+  hot,
+}: {
+  time?: string;
+  text: string;
+  hot?: boolean;
+}) {
   return (
     <li className="flex gap-3">
       <span
         className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${hot ? "bg-red-500" : "bg-brand/50"}`}
       />
       <span className="text-ink/75">
-        {time && <span className="mr-2 font-mono text-xs text-ink/45">{time}</span>}
+        {time && (
+          <span className="mr-2 font-mono text-xs text-ink/45">{time}</span>
+        )}
         {text}
       </span>
     </li>
@@ -435,7 +490,12 @@ function SpreadChart({
             stroke="#dc2626"
             strokeDasharray="4 4"
           />
-          <text x={L + spikeBucket * bw + 5} y={T + 11} fontSize={11} fill="#dc2626">
+          <text
+            x={L + spikeBucket * bw + 5}
+            y={T + 11}
+            fontSize={11}
+            fill="#dc2626"
+          >
             Spike detected
           </text>
         </g>
