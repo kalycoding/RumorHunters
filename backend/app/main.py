@@ -1,17 +1,11 @@
-import asyncio
 import json
 from datetime import UTC, datetime, timedelta
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app import config, progress
-from app.models import Post
-from app.agents.relevance import classify
-from app.collectors.news import collect
-from app.collectors.resolve import resolve_links
 from app.collectors.x import collect_x
 from app.pipeline import DATA
 from app.store import Store
@@ -19,24 +13,7 @@ from app.store import Store
 store = Store()
 
 
-async def _loop() -> None:
-    while True:
-        try:
-            await _screen(await collect(store))
-        except Exception as e:  # one bad run must not stop the loop
-            print("collect failed:", e)
-        await asyncio.sleep(config.COLLECT_INTERVAL_SECONDS)
-
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    task = asyncio.create_task(_loop()) if config.COLLECT_AUTO else None
-    yield
-    if task:
-        task.cancel()
-
-
-app = FastAPI(title="Rumor Hunters", lifespan=lifespan)
+app = FastAPI(title="Rumor Hunters")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3100", "http://localhost:3000"],
@@ -47,37 +24,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "watching": config.WATCH_ORGS, "auto": config.COLLECT_AUTO}
-
-
-@app.post("/collect/run")
-async def run_now() -> dict:
-    """Collect once, screen the new mentions, return only those."""
-    result = await collect(store)
-    return await _screen(result)
-
-
-async def _screen(result: dict) -> dict:
-    fresh = [Post(**p) for p in result["posts"]]
-    for p in await classify(fresh):
-        store.update(p)
-    keep = [p for p in fresh if p.relevant]
-    seen = {p.url for p in keep}
-    keep += [
-        p for p in store.unresolved() if p.url not in seen
-    ]  # retry links that failed last time
-    await resolve_links(keep)  # open only the mentions that matter
-    for p in keep:
-        store.update(p)
-    result["posts"] = [p.model_dump(mode="json") for p in fresh]
-    result["relevant"] = len(keep)
-    result["links_resolved"] = sum(1 for p in keep if p.link)
-    return result
-
-
-@app.get("/posts")
-def posts(limit: int = 100) -> list:
-    return [p.model_dump(mode="json") for p in store.recent(limit)]
+    return {"ok": True, "watching": config.WATCH_ORGS}
 
 
 @app.post("/replay/analyze")

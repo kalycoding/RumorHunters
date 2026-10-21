@@ -3,5 +3,4 @@ uvicorn
 pydantic
 anthropic
 python-dotenv
-playwright
 httpx

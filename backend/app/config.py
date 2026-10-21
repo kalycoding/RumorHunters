@@ -12,12 +12,7 @@ WATCH_ORGS = [
     for o in os.getenv("WATCH_ORGS", "Zenith Bank,OPay").split(",")
     if o.strip()
 ]
-COLLECT_INTERVAL_SECONDS = int(os.getenv("COLLECT_INTERVAL_SECONDS", "300"))
-COLLECT_AUTO = (
-    os.getenv("COLLECT_AUTO", "0") == "1"
-)  # off by default; the demo can press "run now"
 DB_PATH = os.getenv("DB_PATH", "data/rumor_hunters.db")
-USER_AGENT = "Mozilla/5.0 (compatible; RumorHuntersResearch/0.1; hackathon demo)"
 
 # X (Twitter): read-only search, billed per post read.
 X_BEARER_TOKEN = os.getenv("X_BEARER_TOKEN", "")

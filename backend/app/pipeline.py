@@ -132,7 +132,6 @@ async def analyze_live(
             for p in store.recent(5000)
             if p.org == org
             and p.platform == "x"
-            and p.relevant is not False
             and since <= _aware(p.posted_at) <= now
         ]
         for p in posts:

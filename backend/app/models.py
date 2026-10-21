@@ -17,9 +17,7 @@ class Post(BaseModel):
     text: str
     posted_at: datetime
     url: str | None = None  # where the post lives; shown to the user as evidence
-    link: str | None = None  # publisher's real address, once resolved
     org: str | None = None  # which watched organization it mentions
-    relevant: bool | None = None  # set by the relevance check; None = not checked yet
     likes: int = 0
     reposts: int = 0
     replies: int = 0

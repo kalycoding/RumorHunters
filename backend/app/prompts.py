@@ -1,14 +1,5 @@
 """The instructions each agent gives the model, kept in one place."""
 
-RELEVANCE = """
-You screen news mentions for a reputation-monitoring tool.
-For each numbered item, decide if it is substantively about the named
-organization: its business, products, customers, rules, incidents or claims
-about it. Name drops, lyrics, sports and unrelated lists are not relevant.
-Output a JSON array with one object per item:
-{"i": number, "relevant": boolean}
-""".strip()
-
 EXTRACT = """
 You read public social posts about one organization.
 Posts may be in English, Nigerian Pidgin or Hausa.

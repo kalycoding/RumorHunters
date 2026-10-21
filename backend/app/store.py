@@ -40,19 +40,3 @@ class Store:
             "SELECT body FROM posts ORDER BY posted_at DESC LIMIT ?", (limit,)
         ).fetchall()
         return [Post.model_validate_json(r[0]) for r in rows]
-
-    def update(self, post: Post) -> None:
-        self.db.execute(
-            "UPDATE posts SET body = ? WHERE url = ?",
-            (post.model_dump_json(), post.url),
-        )
-        self.db.commit()
-
-    def unresolved(self, limit: int = 20) -> list[Post]:
-        """Relevant mentions still pointing at a Google redirect, newest first."""
-        rows = self.db.execute(
-            "SELECT body FROM posts WHERE json_extract(body, '$.relevant') = 1 "
-            "AND json_extract(body, '$.link') IS NULL ORDER BY posted_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-        return [Post.model_validate_json(r[0]) for r in rows]
