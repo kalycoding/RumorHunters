@@ -22,17 +22,6 @@ We kept the important decisions in plain code we can read and test:
 - **The reply never invents facts.** The prompt says to use only the verified facts given. If the verdict is unverified, the reply must not say the claim is false.
 - **A person stays in control.** Replies wait for a team member to approve them. A team can turn on auto-reply for low-risk stories only. Critical stories always wait for a person.
 
-### Where models run
-
-`llm.py` supports three backends behind one function: the Anthropic API, OpenCode (the same Claude models), or the Claude Code command line on a Claude subscription. Right now it runs on the Claude Code command line, because we do not have an API key set.
-
-### Honest limits
-
-- Only X is connected. The OPay replay is a **simulation** of the real timeline and is labelled that way in the app.
-- Sending a reply is **simulated**. Nothing is posted anywhere yet.
-- We have not yet measured the AI's accuracy or time to detect on real data.
-- Public posts only. No private messages.
-
 ## 2. AI helping us write the code
 
 - **Tool used:** Claude Code (Anthropic), in the terminal.

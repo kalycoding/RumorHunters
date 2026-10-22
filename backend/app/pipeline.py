@@ -124,9 +124,9 @@ async def analyze_live(
     store: Store, since: datetime | None = None, until: datetime | None = None
 ) -> dict:
     """The same agents on the X posts we collected for the watched organizations.
-    By default the last few days; pass `since` and `until` for a past period."""
+    By default the last half hour; pass `since` and `until` for a past period."""
     now = until or datetime.now(UTC)
-    since = since or now - timedelta(hours=config.LIVE_WINDOW_HOURS)
+    since = since or now - timedelta(minutes=config.LIVE_WINDOW_MINUTES)
     path = DATA / "facts_live.json"
     facts_by_org = json.loads(path.read_text()) if path.exists() else {}
     all_posts: list[Post] = []

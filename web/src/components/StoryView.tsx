@@ -333,6 +333,11 @@ export function StoryView() {
                   <span className="truncate">
                     <PlatformBadge platform={p.platform} /> · {p.author} ·{" "}
                     {LANG[p.lang]}
+                    {p.removed && (
+                      <span className="ml-2 rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
+                        Removed from X
+                      </span>
+                    )}
                   </span>
                   <span className="shrink-0">{clock(p.minute, start)}</span>
                 </div>

@@ -43,6 +43,7 @@ function spread(posts: DemoPost[], now: number, byAuthor = false) {
   return { latest, growth, spike: latest >= 5 && growth >= 2 };
 }
 
+const SHOW_DATE_FILTER = false; // fetching a past period from X costs credits
 const LEVELS = ["Low", "Elevated", "Critical"] as const;
 type Level = (typeof LEVELS)[number];
 
@@ -236,7 +237,7 @@ function LiveWatcher() {
       });
       setData(next);
       bump();
-    }, 3000);
+    }, 1000);
     return () => window.clearInterval(id);
   }, [data, setData, bump]);
 
@@ -368,6 +369,7 @@ function WatcherView({
 }) {
   const router = useRouter();
   const live = data.live;
+  const incoming = watch?.incoming ?? [];
   const startFrom = live && !past ? Math.max(0, data.lastMinute - DAY) : 0;
   const [now, setNow] = useState(live ? data.lastMinute : 0);
   const [from, setFrom] = useState(startFrom);
@@ -530,7 +532,7 @@ function WatcherView({
           />
         )}
 
-        {live && (
+        {live && SHOW_DATE_FILTER && (
           <DateFilter
             data={data}
             past={past}
@@ -594,7 +596,40 @@ function WatcherView({
             <h2 className="mb-3 text-xs font-medium uppercase tracking-[0.16em] text-ink/45">
               Live story stream
             </h2>
-            {stories.length === 0 ? (
+            {incoming.map((p) => (
+              <div
+                key={p.id}
+                className="mb-3 block w-full rounded-2xl border border-black/[0.06] bg-white p-4 text-left"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-ink/50">
+                      <PlatformBadge platform={p.platform} />
+                      <span className="rounded-md bg-brand px-2 py-0.5 text-[11px] font-bold text-white">
+                        NEW
+                      </span>
+                      <span>just now</span>
+                    </div>
+                    <p className="mt-2 truncate font-medium text-ink">
+                      {p.text}
+                    </p>
+                    <p className="mt-0.5 truncate text-sm text-ink/55">
+                      {p.author}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className="rounded-md bg-ink/5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink/55">
+                      Reading
+                    </span>
+                    <p className="mt-2 flex items-center justify-end gap-1.5 text-xs text-ink/55">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
+                      Reading post
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {stories.length === 0 && incoming.length === 0 ? (
               <p className="rounded-3xl bg-white p-10 text-center text-sm text-ink/40 ring-1 ring-black/[0.05]">
                 {live
                   ? "No stories in this date range. Widen the dates or press Refresh now."

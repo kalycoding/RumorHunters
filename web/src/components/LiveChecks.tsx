@@ -1,13 +1,6 @@
 import type { WatchStatus } from "@/lib/replay";
 
-const time = (iso: string) =>
-  new Date(iso).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-
-/** The Live checks switch, with when it last looked and what it has cost. */
+/** The Live checks switch. */
 export function LiveChecks({
   watch,
   onToggle,
@@ -18,9 +11,7 @@ export function LiveChecks({
   const on = watch?.on ?? false;
   let line = `Off. Turn on to check X every ${watch?.interval ?? 5} seconds and show only what's new.`;
   if (on) {
-    line = `Checking X every ${watch?.interval}s`;
-    if (watch?.last_check) line += ` · last check ${time(watch.last_check)}`;
-    if (watch?.analysing) line += " · reading new posts…";
+    line = "";
   } else if (watch?.error) {
     line = `Stopped: ${watch.error}`;
   }
@@ -45,19 +36,15 @@ export function LiveChecks({
               <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
             )}
           </p>
-          <p
-            className={`text-sm ${!on && watch?.error ? "text-red-600" : "text-ink/55"}`}
-          >
-            {line}
-          </p>
+          {line && (
+            <p
+              className={`text-sm ${!on && watch?.error ? "text-red-600" : "text-ink/55"}`}
+            >
+              {line}
+            </p>
+          )}
         </div>
       </div>
-      {watch && watch.checks > 0 && (
-        <p className="text-sm text-ink/55">
-          {watch.new_posts} new {watch.new_posts === 1 ? "post" : "posts"} ·
-          about ${watch.usd.toFixed(2)} of ${watch.budget.toFixed(2)} budget
-        </p>
-      )}
     </div>
   );
 }

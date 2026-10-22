@@ -1,23 +1,24 @@
-"""One place every agent calls a model. Three backends, same interface:
+"""One place every agent calls a model. Two ways in, same interface:
 
 - anthropic: the Anthropic API (needs ANTHROPIC_API_KEY).
 - opencode: the same Claude models through OpenCode (OPENCODE_API_KEY).
-- claude_code: `claude -p` on a Claude subscription, trimmed to ~600 tokens
-  (no tools, no skills, no settings). Used when there is no API key.
-Switch with LLM_BACKEND=anthropic|opencode|claude_code|auto.
+Switch with LLM_BACKEND=anthropic|opencode|auto.
 """
 
-import asyncio
 import json
 import re
 from typing import Any
 
+import httpx
+from anthropic import AsyncAnthropic, DefaultAsyncHttpxClient
+
 from app import config
 
 # fast = cheap, high-volume checks. smart = reading and reasoning.
-ANTHROPIC_MODELS = {"fast": "claude-haiku-5-5", "smart": config.MODEL}
-CLI_MODELS = {"fast": "haiku", "smart": "sonnet"}
-_slots = asyncio.Semaphore(2)  # don't launch many CLI processes at once
+MODELS = {"fast": "claude-haiku-5-5", "smart": config.MODEL}
+# Seconds to wait for a reply. A stalled call is dropped and retried, not waited on.
+TIMEOUTS = {"fast": 6, "smart": 20}
+_client: AsyncAnthropic | None = None  # made once, so calls reuse the connection
 
 
 def backend() -> str:
@@ -25,64 +26,46 @@ def backend() -> str:
         return config.LLM_BACKEND
     if config.ANTHROPIC_API_KEY:
         return "anthropic"
-    return "opencode" if config.OPENCODE_API_KEY else "claude_code"
+    if config.OPENCODE_API_KEY:
+        return "opencode"
+    raise RuntimeError("No model key. Set ANTHROPIC_API_KEY in backend/.env")
+
+
+def _get_client() -> AsyncAnthropic:
+    global _client
+    if _client is None:
+        # Keep the connection open between reads. The default closes it after
+        # a few idle seconds, and opening a new one costs about a second a call.
+        http = DefaultAsyncHttpxClient(limits=httpx.Limits(keepalive_expiry=120))
+        if backend() == "opencode":  # same Claude models, billed through OpenCode
+            _client = AsyncAnthropic(
+                base_url=config.OPENCODE_URL,
+                auth_token=config.OPENCODE_API_KEY,
+                http_client=http,
+            )
+        else:
+            _client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY, http_client=http)
+    return _client
 
 
 def parse_json_text(text: str) -> Any:
-    """Pull JSON out of a reply that may have code fences or extra words."""
+    """Pull the first JSON value out of a reply that may have code fences or extra
+    words before or after it."""
     text = text.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if fenced:
         text = fenced.group(1).strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"(\[.*\]|\{.*\})", text, re.S)
-        if not match:
-            raise ValueError(f"No JSON in model reply: {text[:120]!r}") from None
-        return json.loads(match.group(1))
+    start = re.search(r"[\[{]", text)
+    if not start:
+        raise ValueError(f"No JSON in model reply: {text[:120]!r}")
+    value, _ = json.JSONDecoder().raw_decode(text, start.start())
+    return value
 
 
-async def _claude_code(system: str, prompt: str, tier: str) -> str:
-    async with _slots:
-        proc = await asyncio.create_subprocess_exec(
-            "claude",
-            "-p",
-            prompt,
-            "--output-format",
-            "json",
-            "--tools",
-            "",
-            "--no-session-persistence",
-            "--model",
-            CLI_MODELS[tier],
-            "--system-prompt",
-            system,
-            "--disable-slash-commands",
-            "--setting-sources",
-            "",
-            "--strict-mcp-config",
-            cwd="/tmp",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=180)
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude CLI failed: {err.decode()[:200]}")
-    return json.loads(out.decode())["result"]
-
-
-async def _anthropic(system: str, prompt: str, tier: str) -> str:
-    from anthropic import AsyncAnthropic
-
-    if backend() == "opencode":  # same Claude models, billed through OpenCode
-        client = AsyncAnthropic(
-            base_url=config.OPENCODE_URL, auth_token=config.OPENCODE_API_KEY
-        )
-    else:
-        client = AsyncAnthropic()
-    msg = await client.messages.create(
-        model=ANTHROPIC_MODELS[tier],
+async def _ask(system: str, prompt: str, tier: str) -> str:
+    msg = await _get_client().messages.create(
+        model=MODELS[tier],
+        timeout=TIMEOUTS[tier],
         max_tokens=4096,
         system=system,
         messages=[{"role": "user", "content": prompt}],
@@ -92,7 +75,19 @@ async def _anthropic(system: str, prompt: str, tier: str) -> str:
 
 async def complete_json(system: str, prompt: str, tier: str = "fast") -> Any:
     """Ask the model and return parsed JSON."""
-    text = await (_claude_code if backend() == "claude_code" else _anthropic)(
-        system + "\nReply with JSON only, no other text.", prompt, tier
-    )
+    text = await _ask(system + "\nReply with JSON only, no other text.", prompt, tier)
     return parse_json_text(text)
+
+
+async def complete_list(system: str, prompt: str, tier: str = "fast") -> list[dict]:
+    """Like complete_json, but always a list of objects. The model sometimes wraps
+    the list ({"stories": [...]}) or sends one object, so unwrap or wrap it."""
+    data = await complete_json(system, prompt, tier)
+    if isinstance(data, dict):
+        inner = [
+            v
+            for v in data.values()
+            if isinstance(v, list) and v and all(isinstance(x, dict) for x in v)
+        ]
+        data = inner[0] if inner else [data]
+    return [row for row in data if isinstance(row, dict)]

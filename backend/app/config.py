@@ -28,9 +28,9 @@ WATCH_MAX_HOURS = int(os.getenv("WATCH_MAX_HOURS", "2"))  # live checks stop the
 X_WATCH_RESULTS = 50  # most new posts one check will take, per organization
 X_BACKFILL_RESULTS = int(os.getenv("X_BACKFILL_RESULTS", "40"))  # per org, per period
 X_USD_PER_POST = 0.005
-LIVE_WINDOW_HOURS = int(os.getenv("LIVE_WINDOW_HOURS", "168"))
+LIVE_WINDOW_MINUTES = int(os.getenv("LIVE_WINDOW_MINUTES", "30"))  # live look-back
 
-# "auto": Anthropic API, else OpenCode, else Claude Code.
+# "auto": the Anthropic API, else OpenCode.
 LLM_BACKEND = os.getenv("LLM_BACKEND", "auto")
 OPENCODE_API_KEY = os.getenv("OPENCODE_API_KEY", "")
 OPENCODE_URL = "https://opencode.ai/inference/anthropic"

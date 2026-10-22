@@ -29,6 +29,20 @@ class Store:
         self.db.commit()
         return saved.rowcount > 0
 
+    def mark_removed(self, ids: set[str]) -> int:
+        """Flag posts that are no longer on X. Returns how many are newly flagged."""
+        flagged = 0
+        for post in self.recent(5000):
+            if post.id in ids and not post.deleted:
+                post.deleted = True
+                self.db.execute(
+                    "UPDATE posts SET body = ? WHERE url = ?",
+                    (post.model_dump_json(), post.url),
+                )
+                flagged += 1
+        self.db.commit()
+        return flagged
+
     def recent(self, limit: int = 100) -> list[Post]:
         rows = self.db.execute(
             "SELECT body FROM posts ORDER BY posted_at DESC LIMIT ?", (limit,)

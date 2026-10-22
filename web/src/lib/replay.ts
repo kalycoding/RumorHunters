@@ -1,4 +1,4 @@
-import { type DemoPost } from "@/lib/mock";
+import { type DemoPost, type Platform } from "@/lib/mock";
 import { api } from "@/lib/auth";
 
 export interface Draft {
@@ -55,6 +55,7 @@ function fromAgents(d: any, live = false): ReplayData {
     reach: 1 + p.likes + 2 * p.reposts + 1.5 * p.replies,
     author: p.author,
     url: p.url,
+    removed: p.deleted,
   }));
   const stories: ReplayStory[] = d.stories.map((s: any) => {
     const verdict =
@@ -165,6 +166,7 @@ export interface WatchStatus {
   budget: number; // live checks stop before spending more than this
   version: number; // goes up each time the stories change
   analysing: boolean;
+  incoming: { id: string; platform: Platform; author: string; text: string }[]; // found, not read yet
   error: string | null;
 }
 

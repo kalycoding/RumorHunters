@@ -1,7 +1,7 @@
 """X collector: recent public posts that mention a watched organization.
 Read-only. Each post read costs a fraction of a cent, so the batch is small."""
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -11,6 +11,7 @@ from app.store import Store
 
 SEARCH = "https://api.x.com/2/tweets/search/recent"  # last 7 days
 ARCHIVE = "https://api.x.com/2/tweets/search/all"  # any date
+LOOKUP = "https://api.x.com/2/tweets"  # up to 100 posts by id
 ERRORS = {
     401: "X rejected the token",
     402: "X credits are used up",
@@ -72,6 +73,9 @@ async def collect_x(
                 params["start_time"] = start.strftime("%Y-%m-%dT%H:%M:%SZ")
                 params["end_time"] = end.strftime("%Y-%m-%dT%H:%M:%SZ")
                 params["max_results"] = min(max(10, config.X_BACKFILL_RESULTS), 100)
+            elif "since_id" not in params:  # a first look only goes back a little
+                back = datetime.now(UTC) - timedelta(minutes=config.LIVE_WINDOW_MINUTES)
+                params["start_time"] = back.strftime("%Y-%m-%dT%H:%M:%SZ")
             r = await client.get(ARCHIVE if start and end else SEARCH, params=params)
             if r.status_code != 200:
                 return {"new": new, "error": ERRORS.get(r.status_code, r.text[:100])}
@@ -85,3 +89,19 @@ async def collect_x(
                 if store.add(post):
                     new.append(post)
     return {"new": new, "error": None}
+
+
+async def find_removed(ids: list[str]) -> set[str]:
+    """Which of these posts are no longer on X. One call checks up to 100."""
+    if not config.X_BEARER_TOKEN or not ids:
+        return set()
+    headers = {"Authorization": f"Bearer {config.X_BEARER_TOKEN}"}
+    async with httpx.AsyncClient(timeout=30, headers=headers) as client:
+        r = await client.get(LOOKUP, params={"ids": ",".join(ids[:100])})
+    if r.status_code != 200:
+        return set()
+    return {
+        e["resource_id"]
+        for e in r.json().get("errors", [])
+        if e.get("title") == "Not Found Error"
+    }

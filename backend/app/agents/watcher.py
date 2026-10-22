@@ -15,7 +15,7 @@ async def extract_claims(posts: list[Post], org: str) -> list[ExtractedClaim]:
     for start in range(0, len(posts), BATCH):
         chunk = posts[start : start + BATCH]
         lines = "\n".join(f"{i}. {p.text}" for i, p in enumerate(chunk))
-        rows = await llm.complete_json(
+        rows = await llm.complete_list(
             f"{prompts.EXTRACT}\nOrganization: {org}.", lines, tier="fast"
         )
         for row in rows:
@@ -67,7 +67,12 @@ async def group_into_narratives(
     if not distinct:
         return []
     listing = "\n".join(f"{i}. {t}" for i, t in enumerate(distinct))
-    groups = await llm.complete_json(prompts.GROUP, listing, tier="fast")
+    for _ in range(2):  # the model sometimes sends nothing usable, so ask once more
+        groups = await llm.complete_list(prompts.GROUP, listing, tier="fast")
+        if any(g.get("members") for g in groups):
+            break
+    else:
+        raise RuntimeError(f"Grouping gave no stories for {len(distinct)} claims")
     claim_group: dict[str, int] = {}
     for gi, g in enumerate(groups):
         for m in g.get("members", []):

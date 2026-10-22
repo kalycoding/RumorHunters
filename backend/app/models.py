@@ -21,6 +21,7 @@ class Post(BaseModel):
     likes: int = 0
     reposts: int = 0
     replies: int = 0
+    deleted: bool = False  # gone from X. We keep it: the rumour spread while up
 
 
 class ExtractedClaim(BaseModel):

@@ -63,6 +63,7 @@ async def live_refresh() -> dict:
     try:
         x = await collect_x(store)
         progress.found(x["new"])
+        await watch.update_removed(store)
         result = await analyze_live(store)
     finally:
         progress.finish()

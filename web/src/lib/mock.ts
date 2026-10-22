@@ -15,6 +15,7 @@ export interface DemoPost {
   reach: number;
   author: string; // site, channel or handle
   url: string;
+  removed?: boolean; // no longer on X
 }
 
 export const ORG = "Demo Bank"; // the organization the simulation is about
