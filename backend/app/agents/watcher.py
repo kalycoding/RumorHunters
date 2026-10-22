@@ -22,29 +22,44 @@ async def extract_claims(posts: list[Post], org: str) -> list[ExtractedClaim]:
             i = row.get("i")
             if not (isinstance(i, int) and 0 <= i < len(chunk)):
                 continue
-            lang = (
-                row.get("language")
-                if row.get("language") in ("en", "pcm", "ha")
-                else "en"
-            )
+            ok = bool(row.get("relevant"))
+            lang, mood = row.get("language"), row.get("sentiment")
             out.append(
                 ExtractedClaim(
                     post_id=chunk[i].id,
-                    language=lang,
-                    target_org=org if row.get("relevant") else None,
-                    claim=(row.get("claim") or "") if row.get("relevant") else "",
-                    sentiment=row.get("sentiment")
-                    if row.get("sentiment") in ("negative", "neutral", "positive")
+                    language=lang if lang in ("en", "pcm", "ha") else "en",
+                    target_org=org if ok else None,
+                    claim=(row.get("claim") or "") if ok else "",
+                    sentiment=mood
+                    if mood in ("negative", "neutral", "positive")
                     else "neutral",
                     calls_for_action=bool(row.get("calls_for_action")),
-                    relevant=bool(row.get("relevant")),
+                    relevant=ok,
                 )
             )
     return out
 
 
+ACTION_ACCOUNTS = 3  # real posts: this many accounts must urge action
+
+
+def urges(
+    members: list[ExtractedClaim], by_id: dict[str, Post], by_author: bool
+) -> bool:
+    """Does the story urge people to act? One person asking for help doesn't count
+    for real posts. It takes several accounts."""
+    callers = [c for c in members if c.calls_for_action]
+    if not by_author:
+        return bool(callers)
+    accounts = {by_id[c.post_id].author for c in callers if c.post_id in by_id}
+    return len(accounts) >= ACTION_ACCOUNTS
+
+
 async def group_into_narratives(
-    posts: list[Post], claims: list[ExtractedClaim], now: datetime
+    posts: list[Post],
+    claims: list[ExtractedClaim],
+    now: datetime,
+    by_author: bool = False,  # real posts: count accounts, not repeat posts
 ) -> list[Narrative]:
     by_id = {p.id: p for p in posts}
     relevant = [c for c in claims if c.relevant and c.claim]
@@ -64,32 +79,30 @@ async def group_into_narratives(
         if not members:
             continue
         grp_posts = [by_id[c.post_id] for c in members if c.post_id in by_id]
-        spike_at = None
+        # Walk the story's life: when it first spiked, and its peak. A story is
+        # judged by its peak, not by the quiet tail of the stream.
+        spike_at, peak_pph, peak_growth = None, 0, 1.0
         t = min(p.posted_at for p in grp_posts)
-        while t <= now:  # first moment the story counts as a spike
-            if compute_spread(grp_posts, t)["is_spike"]:
-                spike_at = t
-                break
-            t += timedelta(minutes=2)
-        spread = compute_spread(grp_posts, now)
-        # Judge the story by its peak, not by the quiet tail of the stream.
-        peak_pph, peak_growth, t = 0, 1.0, min(p.posted_at for p in grp_posts)
         while t <= now:
-            sp = compute_spread(grp_posts, t)
+            sp = compute_spread(grp_posts, t, by_author)
+            if sp["is_spike"] and not spike_at:
+                spike_at = t
             peak_pph = max(peak_pph, sp["posts_per_hour"])
             if sp["posts_per_hour"] >= 3:
                 peak_growth = max(peak_growth, sp["growth_rate"])
             t += timedelta(minutes=2)
+        spread = compute_spread(grp_posts, now, by_author)
         narratives.append(
             Narrative(
                 id=f"n{gi + 1}",
                 title=g.get("title", ""),
                 claim=g.get("claim", ""),
-                calls_for_action=any(c.calls_for_action for c in members),
+                calls_for_action=urges(members, by_id, by_author),
                 post_ids=[p.id for p in grp_posts],
                 platforms=sorted({p.platform for p in grp_posts}),
                 first_seen_at=spread["first_seen_at"],
                 posts_per_hour=peak_pph,
+                by_author=by_author,
                 growth_rate=peak_growth,
                 weighted_reach=spread["weighted_reach"],
                 is_spike=spike_at is not None,

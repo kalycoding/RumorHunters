@@ -27,7 +27,8 @@ def score_risk(n: Narrative, v: Verification) -> RiskScore:
         drivers.append("growing reach")
     if n.posts_per_hour >= 10:
         score += 25
-        drivers.append(f"{n.posts_per_hour} posts in the last hour")
+        unit = "accounts" if n.by_author else "posts"
+        drivers.append(f"{n.posts_per_hour} {unit} in the last hour")
     elif n.posts_per_hour >= 4:
         score += 10
     if n.growth_rate >= 2:

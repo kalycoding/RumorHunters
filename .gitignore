@@ -15,11 +15,7 @@ next-env.d.ts
 *.pem
 
 # local data and caches
-backend/data/*.db
-backend/data/*_cache.json
-backend/data/replay_analysis.json
-backend/data/live_analysis.json
-backend/data/backfilled.json
+backend/data/
 .ruff_cache/
 .pytest_cache/
 .playwright-mcp/
@@ -32,3 +28,6 @@ backend/data/backfilled.json
 # unused template files and a stale lockfile (pip is used)
 web/public/*.svg
 backend/uv.lock
+
+# generates the simulated posts, kept locally only
+backend/scripts/

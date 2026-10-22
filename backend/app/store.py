@@ -18,22 +18,16 @@ class Store:
             "(url TEXT PRIMARY KEY, org TEXT, posted_at TEXT, body TEXT)"
         )
 
-    def seen(self, url: str) -> bool:
-        return (
-            self.db.execute("SELECT 1 FROM posts WHERE url = ?", (url,)).fetchone()
-            is not None
-        )
-
     def add(self, post: Post) -> bool:
         """Save a post. Returns False if its URL was already stored."""
-        if not post.url or self.seen(post.url):
+        if not post.url:
             return False
-        self.db.execute(
-            "INSERT INTO posts VALUES (?, ?, ?, ?)",
+        saved = self.db.execute(
+            "INSERT OR IGNORE INTO posts VALUES (?, ?, ?, ?)",
             (post.url, post.org, post.posted_at.isoformat(), post.model_dump_json()),
         )
         self.db.commit()
-        return True
+        return saved.rowcount > 0
 
     def recent(self, limit: int = 100) -> list[Post]:
         rows = self.db.execute(

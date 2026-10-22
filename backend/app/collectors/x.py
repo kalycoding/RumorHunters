@@ -11,20 +11,6 @@ from app.store import Store
 
 SEARCH = "https://api.x.com/2/tweets/search/recent"  # last 7 days
 ARCHIVE = "https://api.x.com/2/tweets/search/all"  # any date
-RUMOUR_WORDS = [
-    "closing",
-    '"shutting down"',
-    "frozen",
-    "fraud",
-    "scam",
-    "hacked",
-    '"not working"',
-    "outage",
-    '"withdraw your"',
-    '"don close"',
-    '"dey block"',
-    '"comot your money"',
-]
 ERRORS = {
     401: "X rejected the token",
     402: "X credits are used up",
@@ -34,7 +20,8 @@ ERRORS = {
 
 
 def build_query(org: str) -> str:
-    return f'"{org}" ({" OR ".join(RUMOUR_WORDS)}) -is:retweet'
+    """Every post that names the organization. The agents decide what matters."""
+    return f'"{org}" -is:retweet'
 
 
 def to_post(t: dict, users: dict, org: str) -> Post:
@@ -59,9 +46,11 @@ async def collect_x(
     orgs: list[str] | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
+    since_ids: dict[str, str] | None = None,
 ) -> dict:
     """One run: search each organization, keep posts we haven't seen.
-    With `start` and `end`, search that past period in the archive instead."""
+    With `start` and `end`, search that past period in the archive instead.
+    With `since_ids` (newest post id per organization), take only later posts."""
     if not config.X_BEARER_TOKEN:
         return {"new": [], "error": "X_BEARER_TOKEN is not set"}
     new: list[Post] = []
@@ -75,6 +64,10 @@ async def collect_x(
                 "expansions": "author_id",
                 "user.fields": "username",
             }
+            if since_ids is not None:
+                params["max_results"] = config.X_WATCH_RESULTS
+                if org in since_ids:
+                    params["since_id"] = since_ids[org]
             if start and end:
                 params["start_time"] = start.strftime("%Y-%m-%dT%H:%M:%SZ")
                 params["end_time"] = end.strftime("%Y-%m-%dT%H:%M:%SZ")

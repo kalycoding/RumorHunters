@@ -4,19 +4,28 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# The demo login. Login stays off until AUTH_PASSWORD is set.
+AUTH_USER = os.getenv("AUTH_USER", "demo")
+AUTH_PASSWORD = os.getenv("AUTH_PASSWORD", "")
+AUTH_SECRET = os.getenv("AUTH_SECRET", "")
+
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5")
 
 WATCH_ORGS = [
-    o.strip()
-    for o in os.getenv("WATCH_ORGS", "Zenith Bank,OPay").split(",")
-    if o.strip()
+    o.strip() for o in os.getenv("WATCH_ORGS", "Zenith Bank").split(",") if o.strip()
 ]
 DB_PATH = os.getenv("DB_PATH", "data/rumor_hunters.db")
 
 # X (Twitter): read-only search, billed per post read.
 X_BEARER_TOKEN = os.getenv("X_BEARER_TOKEN", "")
 X_MAX_RESULTS = int(os.getenv("X_MAX_RESULTS", "20"))  # per organization, per refresh
+WATCH_INTERVAL_SECONDS = int(os.getenv("WATCH_INTERVAL_SECONDS", "5"))
+WATCH_BUDGET_USD = float(
+    os.getenv("WATCH_BUDGET_USD", "2")
+)  # most one session may spend
+WATCH_MAX_HOURS = int(os.getenv("WATCH_MAX_HOURS", "2"))  # live checks stop themselves
+X_WATCH_RESULTS = 50  # most new posts one check will take, per organization
 X_BACKFILL_RESULTS = int(os.getenv("X_BACKFILL_RESULTS", "40"))  # per org, per period
 X_USD_PER_POST = 0.005
 LIVE_WINDOW_HOURS = int(os.getenv("LIVE_WINDOW_HOURS", "168"))

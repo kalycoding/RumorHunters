@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 Language = Literal["en", "pcm", "ha"]  # English, Pidgin, Hausa
 Platform = Literal["x", "facebook", "instagram", "telegram", "reddit", "news", "blog"]
-Verdict = Literal["true", "false", "misleading", "unverified"]
+Verdict = Literal["true", "false", "misleading", "unverified", "not_checked"]
 
 
 class Post(BaseModel):
@@ -41,7 +41,8 @@ class Narrative(BaseModel):
     post_ids: list[str]
     platforms: list[Platform]
     first_seen_at: datetime
-    posts_per_hour: int = 0
+    posts_per_hour: int = 0  # accounts per hour when `by_author`
+    by_author: bool = False
     growth_rate: float = 1.0
     weighted_reach: float = 0.0
     is_spike: bool = False

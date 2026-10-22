@@ -1,25 +1,37 @@
 import json
 from datetime import UTC, datetime, timedelta
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app import config, progress
+from app import auth, config, progress, watch
 from app.collectors.x import collect_x
-from app.pipeline import DATA
+from app.pipeline import DATA, analyze_live, analyze_replay, cached, live_cached
 from app.store import Store
 
 store = Store()
 
 
-app = FastAPI(title="Rumor Hunters")
+app = FastAPI(title="Rumor Hunters", dependencies=[Depends(auth.require_login)])
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3100", "http://localhost:3000"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class Credentials(BaseModel):
+    user: str
+    password: str
+
+
+@app.post("/login")
+def login(c: Credentials) -> dict:
+    if not auth.check_credentials(c.user, c.password):
+        raise HTTPException(401, "Wrong username or password")
+    return {"token": auth.make_token(c.user)}
 
 
 @app.get("/health")
@@ -30,33 +42,23 @@ def health() -> dict:
 @app.post("/replay/analyze")
 async def replay_analyze() -> dict:
     """Run the agents on the seeded replay (a few minutes) and cache it."""
-    from app.pipeline import analyze_replay
-
     return await analyze_replay()
 
 
 @app.get("/replay")
 def replay() -> dict:
     """The cached agent output for the replay, or 404 if the agents haven't run yet."""
-    from app.pipeline import cached
-
     data = cached()
     if data is None:
         raise HTTPException(404, "Run POST /replay/analyze first")
     return data
 
 
-@app.get("/facts")
-def facts() -> list:
-    """The organization's verified facts. The fact-checker uses nothing else."""
-    return json.loads((DATA / "facts.json").read_text())
-
-
 @app.post("/live/refresh")
 async def live_refresh() -> dict:
     """Collect from X, then run the agents on real posts."""
-    from app.pipeline import analyze_live
-
+    if watch.lock.locked():
+        raise HTTPException(409, "A live check is running. Try again in a moment.")
     progress.start()
     try:
         x = await collect_x(store)
@@ -71,8 +73,6 @@ async def live_refresh() -> dict:
 @app.get("/live")
 def live() -> dict:
     """The last live analysis, or 404 if there hasn't been a refresh yet."""
-    from app.pipeline import live_cached
-
     data = live_cached()
     if data is None:
         raise HTTPException(404, "Run POST /live/refresh first")
@@ -105,8 +105,8 @@ def live_estimate() -> dict:
 @app.post("/live/range")
 async def live_range(p: Period) -> dict:
     """Fetch a past period from the X archive, then run the agents."""
-    from app.pipeline import analyze_live
-
+    if watch.lock.locked():
+        raise HTTPException(409, "A live check is running. Try again in a moment.")
     start, end = _period(p)
     done_file = DATA / "backfilled.json"
     done = json.loads(done_file.read_text()) if done_file.exists() else []
@@ -130,3 +130,22 @@ async def live_range(p: Period) -> dict:
 def live_progress(after: int = 0) -> dict:
     """The running refresh or fetch: its step, and the stories analysed so far."""
     return progress.snapshot(after)
+
+
+class Watch(BaseModel):
+    on: bool
+
+
+@app.post("/live/watch")
+async def live_watch(w: Watch) -> dict:
+    """Turn live checks on or off."""
+    if w.on:
+        watch.start(store)
+    else:
+        watch.stop()
+    return watch.status()
+
+
+@app.get("/live/watch")
+def live_watch_status() -> dict:
+    return watch.status()

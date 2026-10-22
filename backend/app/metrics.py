@@ -9,11 +9,17 @@ def reach_of(p: Post) -> float:
     return 1 + p.likes + 2 * p.reposts + 1.5 * p.replies
 
 
-def compute_spread(posts: list[Post], now: datetime) -> dict:
-    """Latest-hour posts, growth on the hour before, reach, spike flag."""
+def compute_spread(posts: list[Post], now: datetime, by_author: bool = False) -> dict:
+    """Latest-hour posts, growth on the hour before, reach, spike flag.
+    With `by_author`, count accounts instead of posts, so one person posting the
+    same thing ten times counts once."""
+
+    def count(ps: list[Post]) -> int:
+        return len({p.author for p in ps}) if by_author else len(ps)
+
     seen = [p for p in posts if p.posted_at <= now]
-    latest = sum(1 for p in seen if p.posted_at > now - HOUR)
-    before = sum(1 for p in seen if now - 2 * HOUR < p.posted_at <= now - HOUR)
+    latest = count([p for p in seen if p.posted_at > now - HOUR])
+    before = count([p for p in seen if now - 2 * HOUR < p.posted_at <= now - HOUR])
     growth = latest / max(before, 1)
     return {
         "posts_per_hour": latest,

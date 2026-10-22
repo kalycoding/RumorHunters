@@ -1,5 +1,6 @@
 """Agent 2: Fact-checker. Compares a story with the organization's verified facts ONLY.
-No matching fact means "unverified". It never guesses."""
+No matching fact means "unverified". No facts at all means "not_checked".
+It never guesses."""
 
 from app import llm, prompts
 from app.models import Narrative, VerifiedFact, Verification
@@ -9,7 +10,7 @@ async def verify_narrative(n: Narrative, facts: list[VerifiedFact]) -> Verificat
     if not facts:  # nothing to check against: say so, don't ask the model
         return Verification(
             narrative_id=n.id,
-            verdict="unverified",
+            verdict="not_checked",
             reasoning="No verified facts are on file for this organization yet.",
             evidence_fact_ids=[],
         )

@@ -8,7 +8,7 @@ from app import config, progress
 from app.agents.factchecker import verify_narrative
 from app.agents.responder import draft_response, score_risk
 from app.agents.watcher import extract_claims, group_into_narratives
-from app.models import Post, VerifiedFact
+from app.models import ExtractedClaim, Post, VerifiedFact
 from app.sources.replay import ReplaySource
 from app.store import Store
 
@@ -21,10 +21,8 @@ ORG = "Demo Bank"
 CLAIMS = DATA / "claims_cache.json"
 
 
-async def _claims(posts: list[Post], org: str):
+async def _claims(posts: list[Post], org: str) -> list[ExtractedClaim]:
     """Extraction is the slow step. Cache it by post id and text."""
-    from app.models import ExtractedClaim
-
     cache = json.loads(CLAIMS.read_text()) if CLAIMS.exists() else {}
     key = lambda p: f"{p.id}|{p.text}"  # noqa: E731
     todo = [p for p in posts if key(p) not in cache]
@@ -42,20 +40,26 @@ async def _analyze(
     progress.at("Reading posts")
     claims = await _claims(posts, org)
     progress.at("Grouping stories")
-    narratives = await group_into_narratives(posts, claims, now)
+    narratives = await group_into_narratives(posts, claims, now, by_author=bool(prefix))
     progress.at("Checking facts")
     stories = []
     for n in narratives:
-        n.id = f"{prefix}{n.id}"
+        if prefix:  # live: a story keeps its id as it grows
+            first = min(
+                (p for p in posts if p.id in n.post_ids), key=lambda p: p.posted_at
+            )
+            n.id = f"{prefix}{first.id}"
         v = await verify_narrative(n, facts)
         risk = score_risk(n, v)
         progress.story(
             {
                 "id": n.id,
+                "org": org,
                 "title": n.title,
                 "claim": n.claim,
                 "platforms": n.platforms,
                 "posts": len(n.post_ids),
+                "accounts": len({p.author for p in posts if p.id in n.post_ids}),
                 "verdict": v.verdict,
                 "level": risk.level,
                 "score": risk.score,
@@ -66,6 +70,7 @@ async def _analyze(
             draft = await draft_response(n, v, facts)
         stories.append(
             {
+                "org": org,
                 "narrative": n.model_dump(mode="json"),
                 "verification": v.model_dump(mode="json"),
                 "risk": risk.model_dump(mode="json"),
@@ -101,7 +106,7 @@ def _result(org, start, end, posts, claims, stories) -> dict:
 
 
 async def analyze_replay() -> dict:
-    posts: list[Post] = await ReplaySource().fetch(ORG)
+    posts = ReplaySource().fetch()
     facts = [VerifiedFact(**f) for f in json.loads((DATA / "facts.json").read_text())]
     now: datetime = max(p.posted_at for p in posts)
     claims, stories = await _analyze(posts, ORG, facts, now)
@@ -152,9 +157,13 @@ async def analyze_live(
     return result
 
 
+def _load(path: Path) -> dict | None:
+    return json.loads(path.read_text()) if path.exists() else None
+
+
 def live_cached() -> dict | None:
-    return json.loads(LIVE_CACHE.read_text()) if LIVE_CACHE.exists() else None
+    return _load(LIVE_CACHE)
 
 
 def cached() -> dict | None:
-    return json.loads(CACHE.read_text()) if CACHE.exists() else None
+    return _load(CACHE)
