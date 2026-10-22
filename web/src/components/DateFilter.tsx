@@ -1,7 +1,7 @@
 "use client";
 
+import { PlatformBadge } from "@/components/PlatformBadge";
 import { useEffect, useRef, useState } from "react";
-import { PLATFORM } from "@/lib/format";
 import {
   estimateRange,
   loadProgress,
@@ -64,14 +64,12 @@ export function ProgressPanel() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-ink/50">
                   {s.platforms.map((p) => (
-                    <span
-                      key={p}
-                      className="rounded-md bg-white px-2 py-0.5 font-medium text-ink/70 ring-1 ring-black/[0.06]"
-                    >
-                      {PLATFORM[p]}
-                    </span>
+                    <PlatformBadge key={p} platform={p} />
                   ))}
-                  <span>{s.posts} posts</span>
+                  <span>
+                    {s.posts} posts from {s.accounts}{" "}
+                    {s.accounts === 1 ? "account" : "accounts"}
+                  </span>
                 </div>
                 <p className="mt-2 font-medium text-ink">{s.title}</p>
                 <p className="mt-0.5 truncate text-sm text-ink/55">
@@ -83,7 +81,7 @@ export function ProgressPanel() {
                   {level}
                 </span>
                 <p className="mt-2 text-xs capitalize text-ink/55">
-                  {s.verdict}
+                  {s.verdict === "not_checked" ? "Not checked" : s.verdict}
                 </p>
               </div>
             </div>

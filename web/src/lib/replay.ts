@@ -1,15 +1,5 @@
-import {
-  DEMO_VERDICT,
-  LAST_MINUTE,
-  ORG,
-  POSTS,
-  START,
-  STORIES,
-  type DemoPost,
-  type StoryId,
-} from "@/lib/mock";
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8100";
+import { type DemoPost } from "@/lib/mock";
+import { api } from "@/lib/auth";
 
 export interface Draft {
   statement: string;
@@ -18,10 +8,11 @@ export interface Draft {
 }
 export interface ReplayStory {
   id: string;
+  org: string;
   title: string;
   claim: string;
   calls: boolean;
-  verdict: "True" | "False" | "Misleading" | "Unverified";
+  verdict: "True" | "False" | "Misleading" | "Unverified" | "Not checked";
   reasoning: string;
   evidence: { text: string; source: string } | null;
   draft: Draft | null;
@@ -43,7 +34,6 @@ export interface ReplayData {
   posts: DemoPost[];
   stories: ReplayStory[];
   lastMinute: number;
-  source: "agents" | "mock";
 }
 
 const cap = (v: string) =>
@@ -67,10 +57,14 @@ function fromAgents(d: any, live = false): ReplayData {
     url: p.url,
   }));
   const stories: ReplayStory[] = d.stories.map((s: any) => {
-    const verdict = cap(s.verification.verdict);
+    const verdict =
+      s.verification.verdict === "not_checked"
+        ? "Not checked"
+        : cap(s.verification.verdict);
     const fact = s.evidence?.[0];
     return {
       id: s.narrative.id,
+      org: s.org,
       title: s.narrative.title,
       claim: s.narrative.claim,
       calls: s.narrative.calls_for_action,
@@ -108,7 +102,6 @@ function fromAgents(d: any, live = false): ReplayData {
     posts,
     stories,
     lastMinute: Math.max(minute(d.end), 0),
-    source: "agents",
   };
 }
 
@@ -116,7 +109,7 @@ export async function loadReplay(): Promise<
   ReplayData | "missing" | "offline"
 > {
   try {
-    const r = await fetch(`${API}/replay`);
+    const r = await api(`/replay`);
     if (r.status === 404) return "missing";
     if (!r.ok) return "offline";
     return fromAgents(await r.json());
@@ -127,7 +120,7 @@ export async function loadReplay(): Promise<
 
 export async function loadLive(): Promise<ReplayData | "missing" | "offline"> {
   try {
-    const r = await fetch(`${API}/live`);
+    const r = await api(`/live`);
     if (r.status === 404) return "missing";
     if (!r.ok) return "offline";
     return fromAgents(await r.json(), true);
@@ -138,7 +131,7 @@ export async function loadLive(): Promise<ReplayData | "missing" | "offline"> {
 
 /** Collect from X, then run the agents. Takes a minute or two. */
 export async function refreshLive(): Promise<ReplayData> {
-  const r = await fetch(`${API}/live/refresh`, { method: "POST" });
+  const r = await api(`/live/refresh`, { method: "POST" });
   if (!r.ok) throw new Error(String(r.status));
   return fromAgents(await r.json(), true);
 }
@@ -149,7 +142,8 @@ export interface StoryCard {
   claim: string;
   platforms: DemoPost["platform"][];
   posts: number;
-  verdict: string;
+  accounts: number; // distinct accounts behind those posts
+  verdict: string; // "not_checked" when there were no facts to check with
   level: "critical" | "high" | "medium" | "low";
   score: number;
 }
@@ -161,6 +155,29 @@ export interface Progress {
   stories: StoryCard[]; // the ones after `after`
 }
 
+export interface WatchStatus {
+  on: boolean;
+  interval: number; // seconds between checks
+  last_check: string | null;
+  checks: number;
+  new_posts: number;
+  usd: number; // X reads so far, at half a cent a post
+  budget: number; // live checks stop before spending more than this
+  version: number; // goes up each time the stories change
+  analysing: boolean;
+  error: string | null;
+}
+
+export const getWatch = (): Promise<WatchStatus> =>
+  api("/live/watch").then((r) => r.json());
+
+export const setWatch = (on: boolean): Promise<WatchStatus> =>
+  api("/live/watch", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ on }),
+  }).then((r) => r.json());
+
 export const LEVEL = {
   critical: "Critical",
   high: "Elevated",
@@ -170,13 +187,13 @@ export const LEVEL = {
 
 /** The running refresh or fetch: its step and the stories analysed so far. */
 export async function loadProgress(after: number): Promise<Progress> {
-  const r = await fetch(`${API}/live/progress?after=${after}`);
+  const r = await api(`/live/progress?after=${after}`);
   return r.json();
 }
 
 /** What it costs to fetch one past period from X. */
 export async function estimateRange(): Promise<{ posts: number; usd: number }> {
-  const r = await fetch(`${API}/live/estimate`);
+  const r = await api(`/live/estimate`);
   return r.json();
 }
 
@@ -185,7 +202,7 @@ export async function fetchRange(
   start: string,
   end: string,
 ): Promise<ReplayData> {
-  const r = await fetch(`${API}/live/range`, {
+  const r = await api(`/live/range`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ start, end }),
@@ -195,64 +212,7 @@ export async function fetchRange(
 }
 
 export async function runAgents(): Promise<ReplayData> {
-  const r = await fetch(`${API}/replay/analyze`, { method: "POST" });
+  const r = await api(`/replay/analyze`, { method: "POST" });
   if (!r.ok) throw new Error(String(r.status));
   return fromAgents(await r.json());
-}
-
-/** Fallback when the backend is not running: canned data, clearly labelled. */
-export function mockReplay(): ReplayData {
-  const ids = Object.keys(STORIES) as Exclude<StoryId, null>[];
-  const stories: ReplayStory[] = ids.map((id) => {
-    const v = DEMO_VERDICT[id];
-    const posts = POSTS.filter((p) => p.story === id);
-    let spike: number | null = null;
-    for (let m = 0; m <= LAST_MINUTE && spike === null; m += 2) {
-      const now = posts.filter((p) => p.minute <= m);
-      const latest = now.filter((p) => p.minute > m - 60).length;
-      const before = now.filter(
-        (p) => p.minute > m - 120 && p.minute <= m - 60,
-      ).length;
-      if (latest >= 5 && latest / Math.max(before, 1) >= 2) spike = m;
-    }
-    return {
-      id,
-      title: STORIES[id].title,
-      claim: STORIES[id].claim,
-      calls: STORIES[id].calls,
-      verdict: v.verdict,
-      reasoning: v.evidence,
-      evidence:
-        v.verdict === "Unverified"
-          ? null
-          : { text: v.evidence, source: v.source },
-      draft: v.draft ? { statement: v.draft, social: "", sms: "" } : null,
-      spikeMinute: spike,
-      risk: {
-        level: spike === null ? "Low" : "Critical",
-        score: spike === null ? 0 : 80,
-        drivers: [],
-      },
-      peakPerHour: Math.max(
-        ...posts.map(
-          (p) =>
-            posts.filter(
-              (q) => q.minute >= p.minute && q.minute < p.minute + 60,
-            ).length,
-        ),
-        0,
-      ),
-      growth: 1,
-    };
-  });
-  return {
-    org: ORG,
-    start: 0,
-    live: false,
-    startClock: START,
-    posts: POSTS,
-    stories,
-    lastMinute: LAST_MINUTE,
-    source: "mock",
-  };
 }

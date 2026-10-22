@@ -1,28 +1,44 @@
 "use client";
 
+import { PlatformBadge } from "@/components/PlatformBadge";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { clock, PLATFORM } from "@/lib/format";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { clock } from "@/lib/format";
 import { DateFilter, DAY, ProgressPanel } from "@/components/DateFilter";
+import { LiveChecks } from "@/components/LiveChecks";
+import { SystemDown } from "@/components/SystemDown";
 import { ORG, type DemoPost } from "@/lib/mock";
 import {
   fetchRange,
+  getWatch,
   loadLive,
   loadReplay,
   refreshLive,
-  mockReplay,
   runAgents,
+  setWatch,
+  type WatchStatus,
   type ReplayData,
   type ReplayStory,
 } from "@/lib/replay";
 
-function spread(posts: DemoPost[], now: number) {
-  const latest = posts.filter(
-    (p) => p.minute > now - 60 && p.minute <= now,
-  ).length;
-  const before = posts.filter(
-    (p) => p.minute > now - 120 && p.minute <= now - 60,
-  ).length;
+// With `byAuthor` (real posts) it counts accounts, so one person repeating
+// themselves counts once.
+function spread(posts: DemoPost[], now: number, byAuthor = false) {
+  const count = (ps: DemoPost[]) =>
+    byAuthor ? new Set(ps.map((p) => p.author)).size : ps.length;
+  const latest = count(
+    posts.filter((p) => p.minute > now - 60 && p.minute <= now),
+  );
+  const before = count(
+    posts.filter((p) => p.minute > now - 120 && p.minute <= now - 60),
+  );
   const growth = latest / Math.max(before, 1);
   return { latest, growth, spike: latest >= 5 && growth >= 2 };
 }
@@ -30,13 +46,16 @@ function spread(posts: DemoPost[], now: number) {
 const LEVELS = ["Low", "Elevated", "Critical"] as const;
 type Level = (typeof LEVELS)[number];
 
+const newest = (ps: DemoPost[]) => Math.max(...ps.map((p) => p.minute));
+
 // Highest level reached so far. A story's level only goes up while it builds.
-function peakLevel(posts: DemoPost[], now: number): Level {
+function peakLevel(posts: DemoPost[], now: number, byAuthor = false): Level {
   let peak = 0;
   for (let m = 0; m <= now; m += 6) {
     const s = spread(
       posts.filter((p) => p.minute <= m),
       m,
+      byAuthor,
     );
     const lvl = s.spike ? 2 : s.latest >= 3 && s.growth >= 1.5 ? 1 : 0;
     if (lvl > peak) peak = lvl;
@@ -151,16 +170,23 @@ function useSource(
     }
   }
 
-  const bump = () => setVersion((v) => v + 1);
+  const bump = useCallback(() => setVersion((v) => v + 1), []);
   return { data, setData, state, setState, version, bump, refresh };
 }
 
 /** Real posts from X, analysed by the agents on demand. */
 function LiveWatcher() {
-  const { data, state, version, bump, refresh } = useSource(
+  const { data, setData, state, version, bump, refresh } = useSource(
     loadLive,
     refreshLive,
   );
+  const [watch, setWatchStatus] = useState<WatchStatus | null>(null);
+  // Which stories the last update added or grew, for the NEW and UPDATED badges.
+  const [marks, setMarks] = useState({
+    fresh: new Set<string>(),
+    grown: new Set<string>(),
+  });
+  const seen = useRef(-1); // the stories version the page has
   const [history, setHistory] = useState<ReplayData | null>(null);
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
@@ -179,10 +205,52 @@ function LiveWatcher() {
     }
   }
 
+  // Ask every few seconds how the live checks are doing. When they found new
+  // posts, load the new stories and mark what changed.
+  useEffect(() => {
+    const id = window.setInterval(async () => {
+      const s = await getWatch().catch(() => null);
+      if (!s) return;
+      setWatchStatus(s);
+      if (seen.current === -1) seen.current = s.version;
+      if (s.version === seen.current) return;
+      seen.current = s.version;
+      const next = await loadLive();
+      if (typeof next !== "object") return;
+      const count = (d: ReplayData | null) => {
+        const n = new Map<string, number>();
+        d?.posts.forEach(
+          (p) => p.story && n.set(p.story, (n.get(p.story) ?? 0) + 1),
+        );
+        return n;
+      };
+      const before = count(data);
+      const after = count(next);
+      setMarks({
+        fresh: new Set([...after.keys()].filter((k) => !before.has(k))),
+        grown: new Set(
+          [...after]
+            .filter(([k, n]) => n > (before.get(k) ?? n))
+            .map(([k]) => k),
+        ),
+      });
+      setData(next);
+      bump();
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [data, setData, bump]);
+
+  async function toggleWatch() {
+    setWatchStatus(await setWatch(!watch?.on));
+  }
+
   if (state === "loading") return <Loading />;
   if (data && (state === "ready" || state === "running"))
     return (
       <WatcherView
+        watch={watch}
+        onToggleWatch={toggleWatch}
+        marks={marks}
         key={`${history ? `past-${history.start}` : "live"}-${version}`}
         data={history ?? data}
         busy={state === "running" || fetching}
@@ -191,7 +259,10 @@ function LiveWatcher() {
         onFetchPast={fetchPast}
         fetching={fetching}
         fetchError={fetchError}
-        onRefresh={refresh}
+        onRefresh={() => {
+          setMarks({ fresh: new Set(), grown: new Set() });
+          refresh();
+        }}
         refreshing={state === "running"}
       />
     );
@@ -209,10 +280,7 @@ function LiveWatcher() {
 
 /** The simulated Demo Bank stream: agents' cached output, played back. */
 function SimulateWatcher() {
-  const { data, setData, state, setState, refresh } = useSource(
-    loadReplay,
-    runAgents,
-  );
+  const { data, state, refresh } = useSource(loadReplay, runAgents);
   if (state === "loading") return <Loading />;
   if (state === "ready" && data) return <WatcherView data={data} />;
   return (
@@ -222,10 +290,6 @@ function SimulateWatcher() {
       text="The Watcher reads every simulated post, the Fact-checker compares each story with verified facts, and the Responder drafts a reply. Then you can play it back."
       button="Run the agents"
       onRun={refresh}
-      canned={() => {
-        setData(mockReplay());
-        setState("ready");
-      }}
     />
   );
 }
@@ -240,7 +304,6 @@ function Setup({
   button,
   onRun,
   progress,
-  canned,
 }: {
   state: State;
   title: string;
@@ -248,9 +311,8 @@ function Setup({
   button: string;
   onRun: () => void;
   progress?: boolean; // show the analysed stories while running
-  canned?: () => void; // offline fallback
 }) {
-  const offline = state === "offline";
+  if (state === "offline") return <SystemDown />;
   const running = state === "running";
   const action =
     "mt-4 rounded-xl px-4 py-2 text-sm font-medium transition disabled:opacity-50";
@@ -261,32 +323,17 @@ function Setup({
       </h1>
       <div className="max-w-xl rounded-3xl bg-white p-6 ring-1 ring-black/[0.05]">
         <p className="font-medium text-ink">
-          {offline
-            ? "The backend isn't running."
-            : running
-              ? "The agents are working…"
-              : title}
+          {running ? "The agents are working…" : title}
         </p>
-        <p className="mt-1 text-sm text-ink/60">
-          {offline
-            ? "Start it with cd backend && .venv/bin/uvicorn app.main:app --port 8100, then reload."
-            : text}
-        </p>
+        <p className="mt-1 text-sm text-ink/60">{text}</p>
         {running && progress && <ProgressPanel />}
-        {offline && canned && (
-          <button onClick={canned} className={`${action} bg-mist text-ink/70`}>
-            Use canned data
-          </button>
-        )}
-        {!offline && (
-          <button
-            onClick={onRun}
-            disabled={running}
-            className={`${action} bg-brand text-white hover:bg-brand-dark`}
-          >
-            {running ? "Working…" : button}
-          </button>
-        )}
+        <button
+          onClick={onRun}
+          disabled={running}
+          className={`${action} bg-brand text-white hover:bg-brand-dark`}
+        >
+          {running ? "Working…" : button}
+        </button>
       </div>
     </div>
   );
@@ -302,6 +349,9 @@ function WatcherView({
   fetchError,
   onRefresh,
   refreshing,
+  watch,
+  onToggleWatch,
+  marks,
 }: {
   data: ReplayData;
   busy?: boolean; // a refresh or fetch is running
@@ -312,6 +362,9 @@ function WatcherView({
   fetchError?: string;
   onRefresh?: () => void;
   refreshing?: boolean;
+  watch?: WatchStatus | null;
+  onToggleWatch?: () => void;
+  marks?: { fresh: Set<string>; grown: Set<string> };
 }) {
   const router = useRouter();
   const live = data.live;
@@ -352,8 +405,8 @@ function WatcherView({
   const stories = data.stories
     .map((st) => {
       const posts = seen.filter((p) => p.story === st.id);
-      const s = spread(posts, now);
-      const live = peakLevel(posts, now);
+      const s = spread(posts, now, data.live);
+      const live = peakLevel(posts, now, data.live);
       // After a spike, use the Responder's risk level and keep it.
       const reached = st.spikeMinute !== null && now >= st.spikeMinute;
       const level = reached ? st.risk.level : live;
@@ -367,7 +420,17 @@ function WatcherView({
       };
     })
     .filter((s) => s.posts.length > 0)
-    .sort((a, b) => Number(b.spike) - Number(a.spike) || b.latest - a.latest);
+    .sort((a, b) => {
+      // Stories the last update added or grew come first.
+      const hot = (id: string) =>
+        Number(!!(marks?.fresh.has(id) || marks?.grown.has(id)));
+      return (
+        hot(b.id) - hot(a.id) ||
+        (data.live
+          ? newest(b.posts) - newest(a.posts)
+          : Number(b.spike) - Number(a.spike) || b.latest - a.latest)
+      );
+    });
 
   const selected = stories.find((s) => s.id === picked) ?? stories[0] ?? null;
   // Overall threat is the worst story. Hovering a story shows its own level.
@@ -401,9 +464,7 @@ function WatcherView({
               {live ? data.org : ORG} ·{" "}
               {live
                 ? "agents ran on real posts from X"
-                : data.source === "agents"
-                  ? "agents ran on simulated posts"
-                  : "canned demo data"}
+                : "agents ran on simulated posts"}
             </p>
           </div>
           {live ? (
@@ -461,6 +522,13 @@ function WatcherView({
             </div>
           )}
         </div>
+
+        {live && !past && (
+          <LiveChecks
+            watch={watch ?? null}
+            onToggle={onToggleWatch ?? (() => {})}
+          />
+        )}
 
         {live && (
           <DateFilter
@@ -557,14 +625,26 @@ function WatcherView({
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2 text-xs text-ink/50">
                             {platforms.map((p) => (
-                              <span
-                                key={p}
-                                className="rounded-md bg-white px-2 py-0.5 font-medium text-ink/70 ring-1 ring-black/[0.06]"
-                              >
-                                {PLATFORM[p]}
-                              </span>
+                              <PlatformBadge key={p} platform={p} />
                             ))}
+                            {marks?.fresh.has(s.id) && (
+                              <span className="rounded-md bg-brand px-2 py-0.5 text-[11px] font-bold text-white">
+                                NEW
+                              </span>
+                            )}
+                            {marks?.grown.has(s.id) && (
+                              <span className="rounded-md bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white">
+                                UPDATED
+                              </span>
+                            )}
                             <span>first seen {clk(s.posts[0].minute)}</span>
+                            {live && (
+                              <span>
+                                · {s.posts.length} posts from{" "}
+                                {new Set(s.posts.map((p) => p.author)).size}{" "}
+                                accounts
+                              </span>
+                            )}
                           </div>
                           <p className="mt-2 font-medium text-ink">{s.title}</p>
                           <p className="mt-0.5 truncate text-sm text-ink/55">

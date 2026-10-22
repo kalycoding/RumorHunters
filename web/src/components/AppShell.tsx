@@ -1,18 +1,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-
-const icons = {
-  watcher:
-    "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
-  checker: "M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
-  replies: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z",
-};
+import { FiEye, FiMessageSquare, FiSettings } from "react-icons/fi";
+import { AuthGate } from "@/components/AuthGate";
+import { UserMenu } from "@/components/UserMenu";
 
 const NAV = [
-  { id: "watcher", label: "Watcher", href: "/watcher", d: icons.watcher },
-  { id: "checker", label: "Fact-checker", href: "/checker", d: icons.checker },
-  { id: "replies", label: "Replies", href: "/replies", d: icons.replies },
-] as const;
+  { id: "watcher", label: "Watcher", href: "/watcher", icon: FiEye },
+  { id: "replies", label: "Replies", href: "/replies", icon: FiMessageSquare },
+  { id: "settings", label: "Settings", href: "/settings", icon: FiSettings },
+];
 
 export function AppShell({
   active,
@@ -23,33 +19,36 @@ export function AppShell({
 }) {
   return (
     <div className="flex min-h-screen">
-      <aside className="flex w-[68px] shrink-0 flex-col items-center gap-2 bg-[#f3f4f9] py-5">
-        <span className="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand text-sm font-semibold text-white">
-          R
-        </span>
-        {NAV.map((item) => {
-          return (
+      <aside className="sticky top-0 flex h-screen w-[72px] shrink-0 flex-col self-start border-r border-black/[0.06] bg-white p-3 lg:w-60 lg:p-4">
+        <div className="mb-8 flex items-center gap-3 px-1 py-1">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand text-base font-semibold text-white">
+            R
+          </span>
+          <span className="hidden text-lg font-semibold tracking-[-0.02em] text-ink lg:block">
+            Rumor Hunters
+          </span>
+        </div>
+        <p className="mb-2 hidden px-3 text-[11px] font-medium uppercase tracking-[0.14em] text-ink/35 lg:block">
+          Menu
+        </p>
+        <nav className="space-y-1">
+          {NAV.map(({ id, label, href, icon: Icon }) => (
             <Link
-              key={item.id}
-              href={item.href}
-              title={item.label}
-              className={`grid h-10 w-10 place-items-center rounded-xl transition ${active === item.id ? "bg-white text-brand shadow-sm" : "text-ink/55 hover:bg-white/60"}`}
+              key={id}
+              href={href}
+              title={label}
+              className={`flex items-center justify-center gap-3 rounded-xl px-3 py-3 text-[15px] font-medium transition lg:justify-start ${active === id ? "bg-brand/10 text-brand" : "text-ink/65 hover:bg-mist hover:text-ink"}`}
             >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.8}
-                aria-hidden
-              >
-                <path d={item.d} strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <Icon size={21} className="shrink-0" />
+              <span className="hidden lg:inline">{label}</span>
             </Link>
-          );
-        })}
+          ))}
+        </nav>
+        <UserMenu />
       </aside>
-      <main className="min-w-0 flex-1 bg-mist/50">{children}</main>
+      <main className="min-w-0 flex-1 bg-mist/50">
+        <AuthGate>{children}</AuthGate>
+      </main>
     </div>
   );
 }

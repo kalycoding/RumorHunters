@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  devIndicators: false, // hides the dev badge that covered the sidebar
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

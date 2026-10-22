@@ -1,25 +1,22 @@
 "use client";
 
+import { PlatformBadge } from "@/components/PlatformBadge";
+import { SystemDown } from "@/components/SystemDown";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { clock, dur, LANG, PLATFORM } from "@/lib/format";
 import type { DemoPost } from "@/lib/mock";
-import {
-  loadLive,
-  loadReplay,
-  mockReplay,
-  type ReplayData,
-} from "@/lib/replay";
+import { loadLive, loadReplay, type ReplayData } from "@/lib/replay";
 
 const BUCKET = 30; // minutes per bar
 
 export function StoryView() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<ReplayData | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "offline">(
-    "loading",
-  );
+  const [state, setState] = useState<
+    "loading" | "ready" | "missing" | "offline"
+  >("loading");
 
   useEffect(() => {
     let alive = true;
@@ -27,8 +24,7 @@ export function StoryView() {
     load().then((r) => {
       if (!alive) return;
       if (r === "missing" || r === "offline") {
-        setData(mockReplay());
-        setState("offline");
+        setState(r);
       } else {
         setData(r);
         setState("ready");
@@ -45,6 +41,7 @@ export function StoryView() {
     [data, story],
   );
 
+  if (state === "offline") return <SystemDown />;
   if (!data) return <p className="p-10 text-sm text-ink/40">Loading…</p>;
   if (!story) {
     return (
@@ -75,7 +72,10 @@ export function StoryView() {
       ? "bg-red-100 text-red-700"
       : story.verdict === "True"
         ? "bg-emerald-100 text-emerald-700"
-        : "bg-amber-100 text-amber-800";
+        : story.verdict === "Not checked"
+          ? "bg-ink/10 text-ink/60"
+          : "bg-amber-100 text-amber-800";
+  const unchecked = story.verdict === "Not checked";
 
   // Bars: posts per 30 minutes, plus the running total.
   const buckets = Math.ceil((data.lastMinute + 1) / BUCKET);
@@ -111,44 +111,52 @@ export function StoryView() {
     .slice(0, 6);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
+    <div className="mx-auto max-w-7xl space-y-8 px-8 py-10">
       <div>
         <Link
           href="/watcher"
-          className="text-sm text-ink/50 transition hover:text-ink"
+          className="text-base font-medium text-ink/55 transition hover:text-ink"
         >
           ← Back to Watcher
         </Link>
         <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-2xl">
-            <h1 className="text-3xl font-medium tracking-[-0.03em] text-ink">
+          <div className="max-w-3xl">
+            <h1 className="text-5xl font-semibold tracking-[-0.035em] text-ink">
               {story.title}
             </h1>
-            <p className="mt-2 text-ink/60">&ldquo;{story.claim}&rdquo;</p>
+            <p className="mt-3 text-xl leading-relaxed text-ink/65">
+              &ldquo;{story.claim}&rdquo;
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${verdictTone}`}
+              className={`rounded-lg px-4 py-2 text-sm font-bold uppercase tracking-wide ${verdictTone}`}
             >
               {story.verdict}
             </span>
             <span
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${tone === "red" ? "bg-red-100 text-red-700" : tone === "amber" ? "bg-amber-100 text-amber-700" : "bg-ink/5 text-ink/60"}`}
+              className={`rounded-lg px-4 py-2 text-sm font-bold uppercase tracking-wide ${tone === "red" ? "bg-red-100 text-red-700" : tone === "amber" ? "bg-amber-100 text-amber-700" : "bg-ink/5 text-ink/60"}`}
             >
               {story.risk.level} · {story.risk.score}/100
             </span>
           </div>
         </div>
-        {state === "offline" && (
-          <p className="mt-2 text-xs text-amber-700">
-            Backend not running, showing canned demo data.
-          </p>
-        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-        <Stat label="Posts" value={String(posts.length)} />
-        <Stat label="Peak per hour" value={String(story.peakPerHour)} />
+      <div className="grid grid-cols-2 gap-5 md:grid-cols-5">
+        <Stat
+          label="Posts"
+          value={String(posts.length)}
+          hint={
+            data.live
+              ? `from ${new Set(posts.map((p) => p.author)).size} accounts`
+              : undefined
+          }
+        />
+        <Stat
+          label={data.live ? "Peak accounts per hour" : "Peak per hour"}
+          value={String(story.peakPerHour)}
+        />
         <Stat label="Reach" value={reach.toLocaleString()} />
         <Stat label="Languages" value={String(languages.length)} />
         <Stat
@@ -158,12 +166,12 @@ export function StoryView() {
         />
       </div>
 
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.05]">
+      <section className="rounded-3xl bg-white p-8 ring-1 ring-black/[0.05]">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xs font-medium uppercase tracking-[0.16em] text-ink/45">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-ink/55">
             Spread over time
           </h2>
-          <div className="flex gap-4 text-xs text-ink/50">
+          <div className="flex gap-5 text-sm text-ink/60">
             <span className="flex items-center gap-1.5">
               <i className="h-2.5 w-2.5 rounded-sm bg-brand/80" /> Posts per 30
               min
@@ -183,7 +191,7 @@ export function StoryView() {
         />
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-8 lg:grid-cols-3">
         <Card title="By platform">
           <Bars rows={platforms} total={posts.length} />
         </Card>
@@ -191,14 +199,14 @@ export function StoryView() {
           <Bars rows={languages} total={posts.length} />
         </Card>
         <Card title="Most influential sources">
-          <ul className="space-y-2.5 text-sm">
+          <ul className="space-y-3.5 text-base">
             {topSources.map(([name, v]) => (
               <li
                 key={name}
                 className="flex items-center justify-between gap-3"
               >
                 <span className="truncate text-ink/75">{name}</span>
-                <span className="shrink-0 text-xs text-ink/45">
+                <span className="shrink-0 text-sm text-ink/55">
                   {v.n} posts · reach {Math.round(v.reach)}
                 </span>
               </li>
@@ -207,9 +215,9 @@ export function StoryView() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-8 lg:grid-cols-2">
         <Card title="Timeline">
-          <ol className="space-y-3 text-sm">
+          <ol className="space-y-4 text-base">
             <Step time={clock(first, start)} text="First post seen" />
             {story.spikeMinute !== null && (
               <Step
@@ -222,19 +230,25 @@ export function StoryView() {
               time={clock(last, start)}
               text={`Latest post · ${posts.length} posts in total`}
             />
-            <Step text={`Fact-checker verdict: ${story.verdict}`} />
+            <Step
+              text={
+                unchecked
+                  ? "Fact-checker: not run, no facts on file"
+                  : `Fact-checker verdict: ${story.verdict}`
+              }
+            />
             <Step
               text={
                 story.draft
-                  ? "Responder drafted a reply, waiting for approval"
-                  : "No reply drafted"
+                  ? "Responder wrote a reply and sent it for approval"
+                  : "No reply needed"
               }
             />
           </ol>
         </Card>
         <Card title="Why this risk score">
           {story.risk.drivers.length ? (
-            <ul className="space-y-2 text-sm text-ink/75">
+            <ul className="space-y-3 text-base text-ink/80">
               {story.risk.drivers.map((d) => (
                 <li key={d} className="flex gap-2">
                   <span className="text-brand">▲</span>
@@ -243,11 +257,11 @@ export function StoryView() {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-ink/45">
+            <p className="text-base text-ink/50">
               No risk drivers. Low volume and no urge to act.
             </p>
           )}
-          <p className="mt-4 text-xs text-ink/40">
+          <p className="mt-5 text-sm text-ink/50">
             Score is plain arithmetic on reach, speed, growth, urgency and the
             verdict. No model guesses it.
           </p>
@@ -255,9 +269,24 @@ export function StoryView() {
       </div>
 
       <Card title="What the Fact-checker found">
-        <p className="text-sm text-ink/75">{story.reasoning}</p>
+        {unchecked ? (
+          <>
+            <p className="text-base font-medium text-ink">
+              This story wasn&apos;t fact-checked.
+            </p>
+            <p className="mt-2 text-base leading-relaxed text-ink/70">
+              No verified facts are on file for {story.org} yet. The
+              Fact-checker only compares claims with facts the organization has
+              approved, so with none it doesn&apos;t guess.
+            </p>
+          </>
+        ) : (
+          <p className="text-base leading-relaxed text-ink/80">
+            {story.reasoning}
+          </p>
+        )}
         {story.evidence && (
-          <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+          <p className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
             <span className="font-medium">
               Verified fact ({story.evidence.source}):
             </span>{" "}
@@ -267,18 +296,26 @@ export function StoryView() {
       </Card>
 
       {story.draft && (
-        <Card title="Draft reply (needs a person's approval)">
-          <p className="text-sm leading-relaxed text-ink">
+        <Card title="Reply sent for approval">
+          <p className="text-lg leading-relaxed text-ink">
             {story.draft.statement}
           </p>
           {story.draft.social && (
-            <p className="mt-3 text-xs text-ink/60">
+            <p className="mt-4 text-base text-ink/65">
               <span className="font-medium text-ink/75">Social reply:</span>{" "}
               {story.draft.social}
             </p>
           )}
+          {!story.draft && unchecked && (
+            <Card title="Reply">
+              <p className="text-base leading-relaxed text-ink/70">
+                No reply yet. Replies are written from verified facts, and none
+                are on file for {story.org}.
+              </p>
+            </Card>
+          )}
           {story.draft.sms && (
-            <p className="mt-1.5 text-xs text-ink/60">
+            <p className="mt-2 text-base text-ink/65">
               <span className="font-medium text-ink/75">SMS:</span>{" "}
               {story.draft.sms}
             </p>
@@ -287,21 +324,19 @@ export function StoryView() {
       )}
 
       <Card title={`Every post (${posts.length})`}>
-        <ul className="max-h-[480px] space-y-2 overflow-y-auto pr-1">
+        <ul className="max-h-[560px] space-y-3 overflow-y-auto pr-1">
           {[...posts]
             .sort((a, b) => b.minute - a.minute)
             .map((p) => (
-              <li key={p.id} className="rounded-xl bg-mist/70 p-3 text-xs">
+              <li key={p.id} className="rounded-xl bg-mist/70 p-4 text-sm">
                 <div className="flex items-center justify-between gap-2 text-ink/50">
                   <span className="truncate">
-                    <span className="font-medium text-ink/75">
-                      {PLATFORM[p.platform]}
-                    </span>{" "}
-                    · {p.author} · {LANG[p.lang]}
+                    <PlatformBadge platform={p.platform} /> · {p.author} ·{" "}
+                    {LANG[p.lang]}
                   </span>
                   <span className="shrink-0">{clock(p.minute, start)}</span>
                 </div>
-                <p className="mt-1 text-[13px] text-ink">{p.text}</p>
+                <p className="mt-2 text-base text-ink">{p.text}</p>
                 <a
                   href={p.url}
                   target="_blank"
@@ -331,14 +366,14 @@ function Stat({
   hint?: string;
 }) {
   return (
-    <div className="rounded-3xl bg-white p-5 ring-1 ring-black/[0.05]">
-      <p className="text-xs font-medium uppercase tracking-[0.14em] text-ink/45">
+    <div className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.05]">
+      <p className="text-sm font-semibold uppercase tracking-[0.12em] text-ink/55">
         {label}
       </p>
-      <p className="mt-1.5 text-2xl font-medium tracking-[-0.03em] text-ink">
+      <p className="mt-2 text-4xl font-semibold tracking-[-0.035em] text-ink">
         {value}
       </p>
-      {hint && <p className="mt-0.5 text-[11px] text-ink/40">{hint}</p>}
+      {hint && <p className="mt-1 text-sm text-ink/50">{hint}</p>}
     </div>
   );
 }
@@ -351,8 +386,8 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.05]">
-      <h2 className="mb-4 text-xs font-medium uppercase tracking-[0.16em] text-ink/45">
+    <section className="rounded-3xl bg-white p-8 ring-1 ring-black/[0.05]">
+      <h2 className="mb-5 text-sm font-semibold uppercase tracking-[0.14em] text-ink/55">
         {title}
       </h2>
       {children}
@@ -365,13 +400,13 @@ function Bars({ rows, total }: { rows: [string, number][]; total: number }) {
     <ul className="space-y-3">
       {rows.map(([name, n]) => (
         <li key={name}>
-          <div className="mb-1 flex justify-between text-xs text-ink/60">
+          <div className="mb-1.5 flex justify-between text-sm font-medium text-ink/70">
             <span>{name}</span>
             <span>
               {n} · {Math.round((n / total) * 100)}%
             </span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-ink/[0.07]">
+          <div className="h-3 overflow-hidden rounded-full bg-ink/[0.07]">
             <div
               className="h-full rounded-full bg-brand/80"
               style={{ width: `${(n / total) * 100}%` }}
@@ -395,11 +430,11 @@ function Step({
   return (
     <li className="flex gap-3">
       <span
-        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${hot ? "bg-red-500" : "bg-brand/50"}`}
+        className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${hot ? "bg-red-500" : "bg-brand/50"}`}
       />
-      <span className="text-ink/75">
+      <span className="text-ink/80">
         {time && (
-          <span className="mr-2 font-mono text-xs text-ink/45">{time}</span>
+          <span className="mr-2 font-mono text-sm text-ink/50">{time}</span>
         )}
         {text}
       </span>
@@ -420,8 +455,8 @@ function SpreadChart({
   label: (i: number) => string;
 }) {
   const W = 900,
-    H = 240,
-    L = 36,
+    H = 300,
+    L = 44,
     B = 28,
     T = 12,
     R = 12;
@@ -459,7 +494,7 @@ function SpreadChart({
             x={L - 6}
             y={T + ih - f * ih + 3}
             textAnchor="end"
-            fontSize={10}
+            fontSize={13}
             fill="#16132b"
             fillOpacity={0.4}
           >
@@ -479,7 +514,7 @@ function SpreadChart({
           fillOpacity={c ? 0.8 : 0.1}
         />
       ))}
-      <path d={line} fill="none" stroke="#059669" strokeWidth={2} />
+      <path d={line} fill="none" stroke="#059669" strokeWidth={3} />
       {spikeBucket !== null && (
         <g>
           <line
@@ -493,7 +528,7 @@ function SpreadChart({
           <text
             x={L + spikeBucket * bw + 5}
             y={T + 11}
-            fontSize={11}
+            fontSize={14}
             fill="#dc2626"
           >
             Spike detected
@@ -506,9 +541,9 @@ function SpreadChart({
             <text
               key={i}
               x={x(i) + bw / 2}
-              y={H - 8}
+              y={H - 10}
               textAnchor="middle"
-              fontSize={10}
+              fontSize={13}
               fill="#16132b"
               fillOpacity={0.45}
             >
