@@ -37,6 +37,3 @@ We kept the important decisions in plain code we can read and test:
 
 - **Tool used:** Claude Code (Anthropic), in the terminal.
 - **What it did:** debugging, code review, and some targeted changes, for example splitting the live-check loop so polling no longer waits for analysis, and small edits to the dashboard pages. It also helped with the logo and the pitch deck text.
-- **What we did ourselves:** [fill in: the product idea, the agent design, the prompts, the risk rules, the demo]
-- **Rough split of the code:** [fill in an honest figure, for example "about __% written by us, __% by Claude Code"]
-- **How we checked AI-written code:** we read it, ran it, and kept only the parts we could explain.
