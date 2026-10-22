@@ -21,9 +21,7 @@ export function AppShell({
     <div className="flex min-h-screen">
       <aside className="sticky top-0 flex h-screen w-[72px] shrink-0 flex-col self-start border-r border-black/[0.06] bg-white p-3 lg:w-60 lg:p-4">
         <div className="mb-8 flex items-center gap-3 px-1 py-1">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand text-base font-semibold text-white">
-            R
-          </span>
+          <img src="/logo.svg" alt="" className="h-10 w-10 shrink-0" />
           <span className="hidden text-lg font-semibold tracking-[-0.02em] text-ink lg:block">
             Rumor Hunters
           </span>

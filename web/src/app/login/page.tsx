@@ -53,9 +53,7 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-mint/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
         <div className="relative flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-sm font-semibold text-brand">
-            R
-          </span>
+          <img src="/logo.svg" alt="" className="h-10 w-10" />
           <span className="text-lg font-medium">Rumor Hunters</span>
         </div>
         <div className="relative space-y-8">

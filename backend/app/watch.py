@@ -1,4 +1,5 @@
-"""Live checks: look for new X posts every few seconds and report only what's new."""
+"""Live checks: look for new X posts every few seconds and report only what's new.
+Looking and reading are separate, so a slow read never makes a check wait."""
 
 import asyncio
 import time
@@ -9,7 +10,7 @@ from app.collectors.x import collect_x
 from app.pipeline import analyze_live
 from app.store import Store
 
-lock = asyncio.Lock()  # one check or refresh at a time
+lock = asyncio.Lock()  # one read of the posts at a time
 state: dict = {
     "on": False,
     "interval": config.WATCH_INTERVAL_SECONDS,
@@ -21,7 +22,9 @@ state: dict = {
     "analysing": False,
     "error": None,
 }
-_task: asyncio.Task | None = None
+_task: asyncio.Task | None = None  # looks for new posts
+_reader: asyncio.Task | None = None  # reads them with the agents
+_more = False  # new posts came in while the agents were reading
 
 
 def newest_ids(store: Store) -> dict[str, str]:
@@ -40,27 +43,47 @@ def _over_budget() -> bool:
     return spent + worst > config.WATCH_BUDGET_USD
 
 
+async def _read(store: Store) -> None:
+    """Run the agents on what the checks found. Posts that arrive meanwhile
+    are read in the next round."""
+    global _more
+    state["analysing"] = True
+    try:
+        while True:
+            _more = False
+            async with lock:
+                await analyze_live(store)
+            state["version"] += 1
+            if not _more:
+                break
+    except Exception as e:  # a failed read must not leave the switch on
+        state.update(error=str(e)[:100], on=False)
+    finally:
+        state["analysing"] = False
+
+
+def _ask_to_read(store: Store) -> None:
+    global _reader, _more
+    _more = True
+    if _reader is None or _reader.done():
+        _reader = asyncio.create_task(_read(store))
+
+
 async def _check(store: Store) -> bool:
     if _over_budget():
         state["error"] = f"Budget of ${config.WATCH_BUDGET_USD:.2f} reached"
         return False
-    async with lock:
-        x = await collect_x(store, since_ids=newest_ids(store))
-        state["checks"] += 1
-        state["last_check"] = datetime.now(UTC).isoformat()
-        if x["error"]:
-            state["error"] = x["error"]
-            return False
-        n = len(x["new"])
-        state["reads"] += n
-        state["new_posts"] += n
-        if n:
-            state["analysing"] = True
-            try:
-                await analyze_live(store)
-            finally:
-                state["analysing"] = False
-            state["version"] += 1
+    x = await collect_x(store, since_ids=newest_ids(store))
+    state["checks"] += 1
+    state["last_check"] = datetime.now(UTC).isoformat()
+    if x["error"]:
+        state["error"] = x["error"]
+        return False
+    n = len(x["new"])
+    state["reads"] += n
+    state["new_posts"] += n
+    if n:
+        _ask_to_read(store)
     return True
 
 
@@ -91,8 +114,9 @@ def start(store: Store) -> None:
 
 def stop() -> None:
     state["on"] = False
-    if _task:
-        _task.cancel()
+    for task in (_task, _reader):
+        if task:
+            task.cancel()
     state["analysing"] = False
 
 
